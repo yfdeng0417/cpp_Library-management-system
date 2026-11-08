@@ -1,0 +1,11 @@
+# 编译产物与 IDE 缓存，不入库
+bin/
+obj/
+*.exe
+*.o
+*.obj
+*.depend
+*.layout
+
+# 课程论文不随代码上传
+课程论文.docx
