@@ -1,3 +1,6 @@
+// Library.cpp  业务层的实现
+// 值得细看的是 Lend 与 GiveBack 的校验顺序，
+// 以及 OverdueList 的双层遍历。
 #include "Library.h"
 #include <iomanip>
 
@@ -5,6 +8,9 @@ Library::Library()
 {
 }
 
+// 先清空再读入。模板的 Load 内部会调 GetList，
+//     而 GetList 里的 FreeList() 是被注释掉的，
+//     不清空就会把同一批数据叠加到已有链表上。
 int Library::Load(const char *readerFile, const char *bookFile)
 {
 	readers.FreeList();
@@ -38,6 +44,9 @@ void Library::ShowBooks()
 	books.PutList(cout);
 }
 
+// 借书要同时改两处：图书的 remain 减一，读者流水里追加一条。
+//     这两步要么都成功，要么都不发生，否则库存会悄悄少一本。
+//     做法是"先校验、后修改"：把可能失败的条件全部检查完，再动手改数据。
 bool Library::Lend(int readerId, long long isbn, int y, int m, int d)
 {
 	Node<Book> *pb = books.Locate(isbn, true);
@@ -57,6 +66,8 @@ bool Library::Lend(int readerId, long long isbn, int y, int m, int d)
 	return true;
 }
 
+// 还书的校验条件比借书还多，所以三行检查全部提到修改之前，
+//     最后那句 books.CurData().GiveBack() 才是唯一改动库存的地方。
 bool Library::GiveBack(int readerId, long long isbn, int y, int m, int d)
 {
 	if (books.Locate(isbn, true) == NULL)
@@ -69,6 +80,8 @@ bool Library::GiveBack(int readerId, long long isbn, int y, int m, int d)
 	return true;
 }
 
+// Locate 默认只找第一条，要"找出所有同名的人"就得反复调用：
+//     第一轮传 true 从头开始，之后不传，靠静态状态续查。
 int Library::FindReader(int id)
 {
 	int n = 0;
@@ -140,6 +153,8 @@ bool Library::ShowOneReader(int id)
 	return true;
 }
 
+// 双层遍历：外层走读者链表，内层走这位读者的流水链表。
+//     内层只能通过 Reader 提供的三个受限入口访问，拿不到 LinkList 本身。
 int Library::OverdueList(int today)
 {
 	int n = 0;
@@ -156,6 +171,8 @@ int Library::OverdueList(int today)
 	return n;
 }
 
+// Sort 的第一个实参只用来指定"这次按哪个类型比较"，
+//     int(0) 与 string("") 的数值本身没有任何意义。
 void Library::SortReadersById(bool asc)		{ readers.Sort(int(0),     asc); }
 void Library::SortReadersByName(bool asc)	{ readers.Sort(string(""),  asc); }
 void Library::SortBooksByIsbn(bool asc)		{ books.Sort((long long)0, asc); }

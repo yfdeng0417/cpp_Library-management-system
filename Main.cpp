@@ -1,9 +1,13 @@
+// Main.cpp  控制台菜单与输入
+// 只负责输入输出与按键分发，业务逻辑全部在 Library 里。
+// 日期在这里折算成 YYYYMMDD 形式的整数，与数据文件保持一致。
 #include "Library.h"
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
 #include <conio.h>
 
+// 在选项字符串里找按键的位置，找不到返回 -1。
 int Pos(char ch, const char *str)
 {
 	for (int i = 0; str[i] != '\0'; i++)
@@ -12,6 +16,9 @@ int Pos(char ch, const char *str)
 	return -1;
 }
 
+// 只接受 options 里列出的按键，其它键一律忽略。
+//     getch() 不回显、不需要回车，交互更顺手。
+//     打印提示时把 '\x1b' 这类不可见字符显示成 [Esc]。
 int Choice(const char *prompt, const char *options = "")
 {
 	cout << prompt << " {";
@@ -40,6 +47,9 @@ int Choice(const char *prompt, const char *options = "")
 	return key;
 }
 
+// 读一行文本。cin.getline 在输入超长时会置 fail 位并停止工作，
+//     之后所有输入都会失败，所以必须 clear() 清状态、
+//     再用 ignore() 丢掉缓冲区里剩下的字符。
 void ReadLine(char *buf, int n, const char *prompt)
 {
 	cout << prompt;
@@ -52,6 +62,8 @@ void ReadLine(char *buf, int n, const char *prompt)
 	}
 }
 
+// 把当前日期折算成 20251108 这样的整数，与项目里日期的表示法一致。
+//     tm_year 是"从 1900 年起的年数"，tm_mon 从 0 起，都要换算。
 int Today()
 {
 	time_t t = time(NULL);
@@ -59,6 +71,7 @@ int Today()
 	return (lt->tm_year + 1900) * 10000 + (lt->tm_mon + 1) * 100 + lt->tm_mday;
 }
 
+// YYYYMMDD 拆回年月日，供 Lend / GiveBack 使用。
 void SplitDate(int v, int &y, int &m, int &d)
 {
 	y = v / 10000;
@@ -66,6 +79,7 @@ void SplitDate(int v, int &y, int &m, int &d)
 	d = v % 100;
 }
 
+// 菜单只负责显示，真正的按键分发在 main 的 switch 里。
 void ShowMenu()
 {
 	cout << "\n\n============ 图书借阅管理系统 ============" << endl;
@@ -87,6 +101,8 @@ void ShowMenu()
 	cout << "==========================================" << endl;
 }
 
+// 日期做成可选项：直接回车就用今天，也可以手动输入。
+//     这样演示超期、补录历史借阅都不用改系统时间。
 void DoLend(Library &lib)
 {
 	char buf[80];
@@ -183,6 +199,8 @@ void DoFindBook(Library &lib)
 	}
 }
 
+// 主循环：显示菜单，取一个合法按键，再分发处理。
+//     按键同时接受数字与字母（大小写均可），对应菜单右侧那一列。
 int main()
 {
 	Library lib;
@@ -256,6 +274,9 @@ int main()
 		}
 	}
 
+	// 退出前询问是否存盘。
+	//     程序不会自动存盘，直接关窗口会丢掉本次的全部修改，
+	//     所以默认值取 Y：直接回车就是存盘。
 	cout << "\n即将退出，数据是否存盘 ([Y]/n)? ";
 	yn = getche();
 	if (yn != 'n' && yn != 'N')

@@ -1,10 +1,8 @@
 # 图书借阅管理系统
 
-《计算机编程实训》（0830A034）课程项目 1「单向链表类模板及其应用（三层结构）」的选题实现。
-
 以实验四提供的 `LinkList<T>` 类模板为基础，设计一个图书借阅管理系统。模板本身**一行未改**，全部工作集中在数据域类与业务层：读者与借阅流水构成「链表的链表」，一次借还操作同时牵动读者流水与图书库存两条链表。
 
-代码按「一个类一对文件」组织，注释尽量保留，适合当作 C++ 面向对象部分的阅读材料。
+代码按「一个类一对文件」组织。源文件里写了比较详细的中文注释，重点不在「这一行做了什么」，而在「为什么必须这样写、不这样写会出什么问题」——每一处注释都对应一个真实踩过的坑，适合当作 C++ 面向对象部分的阅读材料。
 
 ## 功能
 
@@ -69,7 +67,7 @@ BorrowRecord       & CurRecord();     // 取当前结点的数据
 | 知识点 | 出现在哪里 |
 | --- | --- |
 | 类的定义与封装 | `Book` / `BorrowRecord` / `Reader` 三个数据域类 |
-| 构造函数、初始化列表、默认实参 | `Book::Book(...) : isbn(Isbn)`，`Book.cpp:6` |
+| 构造函数、初始化列表、默认实参 | `Book::Book(...) : isbn(Isbn)`，`Book.cpp:11` |
 | 函数重载 | `Library::FindReader(int)` 与 `FindReader(const char *)` |
 | 类模板与模板的成员函数 | `Node<T>`、`LinkList<T>`，以及 `template <typename TYPE> Locate(...)` |
 | 模板的声明与定义必须同处一个头文件 | `LinkList.h` 445 行，没有对应的 `.cpp` |
@@ -81,249 +79,15 @@ BorrowRecord       & CurRecord();     // 取当前结点的数据
 | 深拷贝、自赋值、双重释放 | `LinkList` 的拷贝构造函数与赋值运算符 |
 | 析构函数与资源释放 | `~LinkList()` 调 `FreeList()` |
 | 引用返回，使函数调用表达式可作左值 | `T & CurData()`，`LinkList.h:334` |
-| 常成员函数与 `const_cast` | `Reader::NumUnreturned()`，`Reader.cpp:11` |
+| 常成员函数与 `const_cast` | `Reader::NumUnreturned()`，`Reader.cpp:21` |
 | 静态局部变量 | `Locate` 里的 `static Node<T> *p`，`LinkList.h:385` |
 | 动态内存 `new` / `delete` | 结点的创建与释放 |
-| C 风格字符串处理 | `strncpy` / `atoi` / `atoll`，`Book.cpp:47` |
+| C 风格字符串处理 | `strncpy` / `atoi` / `atoll`，`Book.cpp:64` |
 | 文件流 | `ifstream` / `ofstream`，`LinkList::Save` / `Load` |
-| 输入流的状态与恢复 | `cin.clear()` + `cin.ignore()`，`Main.cpp:43` |
+| 输入流的状态与恢复 | `cin.clear()` + `cin.ignore()`，`Main.cpp:53` |
 | 异常抛出 | `throw(int)`，`DeleteCurNode` / `CurData` |
 | 头文件保护与预处理宏 | `#ifndef LINKLIST_H` |
 | 命名空间 | `using namespace std;` |
-
-## 从代码里能学到什么
-
-下面每一段都是项目里真实存在的代码，可以直接对着源文件读。
-
-### 1. 为什么必须自己写赋值运算符
-
-`LinkList.h:103`
-
-```cpp
-template <typename T>
-LinkList<T> & LinkList<T>::operator=(const LinkList &list)
-{
-    if (this == &list)                  // ← 自赋值检查
-        return *this;
-    FreeList();                         // 先释放本对象原有的结点
-    Node<T> *temp = NULL;
-    for (Node<T> *p = list.head; p != NULL; p = p->next)
-    {
-        Append(p->data);                // 逐个 new 出新结点，而不是拷指针
-        if (p == list.cur_node)
-            temp = cur_node;            // 顺便把“当前结点”也搬过去
-    }
-    cur_node = temp;
-    return *this;
-}
-```
-
-如果不写这个函数，编译器生成的默认赋值会把 `head` 指针直接拷过去，于是两个对象指向同一批结点；其中任何一个析构时 `delete` 掉这些结点，另一个就只剩一堆野指针——这就是**浅拷贝**。这里的做法是「先清空自己，再逐个复制结点」，称为**深拷贝**。
-
-`if (this == &list)` 那三行同样关键：如果右值就是自己，`FreeList()` 会把自己（也就是右值）的结点全删掉，循环再去遍历一条已经空了的链表。
-
-拷贝构造函数 `LinkList.h:91` 只有一行 `*this = list;`，把活交给赋值运算符——这是复用代码的常见写法：先把自己构造为空链表，再整体赋值。
-
-### 2. 友元类：把私有成员开给模板
-
-`LinkList.h:14`
-
-```cpp
-template <typename T> class Node
-{
-public:
-    Node() : next(NULL) {}
-    Node(const T &t) : data(t), next(NULL) {}          // 转换构造函数
-    friend class LinkList<T>;                          // ← 友类声明
-private:
-    T data;                    // 数据域
-    Node<T> *next;             // 指针域
-};
-```
-
-`data` 和 `next` 都是私有的，`LinkList<T>` 却能直接写 `p->next`、`p->data`。原因是 `Node` 里那句 `friend class LinkList<T>;`——友元不是成员，但**被授权访问私有成员**。
-
-对比一下另一种做法：给 `Node` 加 `T & Data()` 和 `Node<T> *& Next()` 两个公有接口。那样多出两个函数、每次访问都要绕一层，而且把「链表怎么串起来」这件事暴露给了所有人。友元在这里换到的是**性能与简洁**，代价是 `Node` 的封装被 `LinkList` 单向打开了。
-
-另外注意 `template <typename T> class LinkList;` 这条前置声明（`LinkList.h:12`）。`Node` 里用到了 `LinkList<T>`，而 `LinkList` 又用到了 `Node<T>`，两个类互相引用，必须先声明后定义，否则编译器在读到 `friend class LinkList<T>;` 时还不知道它是什么。
-
-### 3. 类型转换运算符：不改模板就能多键排序
-
-`Reader.h:12`
-
-```cpp
-operator int()    const { return id;   }
-operator string() const { return name; }
-```
-
-模板里的 `Sort` 和 `Locate` 都是这样比较的（`LinkList.h:392`、`LinkList.h:413`）：
-
-```cpp
-TYPE(p->data) != TYPE(data)      // Locate 判相等
-(TYPE)p->data < (TYPE)head->data // Sort 判大小
-```
-
-`TYPE` 是调用时传进来的类型。于是同一个 `LinkList<Reader>`，换个实参就换了一把「尺子」（`Library.cpp:159`）：
-
-```cpp
-readers.Sort(int(0),    asc);   // 按学号排：把 Reader 转成 int 再比
-readers.Sort(string(""), asc);  // 按姓名排：把 Reader 转成 string 再比
-```
-
-`int(0)` 和 `string("")` 本身没有意义，它们只是在告诉编译器「这次用哪种转换」。这样 `LinkList` 一行都不用改，就同时支持了按学号排、按姓名排、按 ISBN 查、按题名查——**把「比较什么」从模板里移到了调用处**。
-
-顺带一个坑：`operator int()` 和 `operator long long()` 同时存在时，`cout << r` 这种地方编译器可能不知道该选哪个转换，容易产生歧义，所以输出一律走显式的 `Show()` 或 `operator<<`。
-
-### 4. 静态局部变量：`Locate` 的续查状态
-
-`LinkList.h:385`
-
-```cpp
-template <typename T> template <typename TYPE>
-Node<T> *LinkList<T>::Locate(const TYPE &x, bool newsearch)
-{
-    static Node<T> *p = head;        // ← 注意是 static
-    static TYPE data = x;
-    if (newsearch)                   // 新开一轮查找
-    {
-        p = head;
-        data = x;
-    }
-    for (; p != NULL && TYPE(p->data) != TYPE(data); p = p->next)
-        ;                            // 从上次停下的地方接着找
-    cur_node = p;
-    if (p != NULL)
-        p = p->next;                 // 悄悄往后挪一步，为下一次续查做准备
-    return cur_node;
-}
-```
-
-`Locate` 要支持「找出所有同名的人」，所以它记住上次找到的位置，下次不传 `newsearch` 就从那儿继续找。`static` 局部变量在函数返回后依然存在，正好用来保存这个状态。
-
-代价是：**这个状态在所有 `LinkList<T>` 对象之间共享**。`readers.Locate(...)` 和 `books.Locate(...)` 的类型不同，各有一份；但同一个类型的多条链表会互相踩。所以项目里凡是「开始一轮新查找」的地方，一律显式写 `Locate(x, true)`；只有循环里的续查才省略第二个参数：
-
-```cpp
-Node<Reader> *p = readers.Locate(id, true);     // 第一轮，重置
-while (p != NULL)
-{
-    n++;
-    readers.CurData().Show(cout);
-    p = readers.Locate(id);                     // 续查，接着上次的位置
-}
-```
-
-### 5. 引用返回：让函数调用能当左值
-
-`LinkList.h:334`
-
-```cpp
-template <typename T>
-T & LinkList<T>::CurData() throw(int)
-{
-    if (cur_node != NULL)
-        return cur_node->data;      // 返回引用，不是返回值
-    else
-        throw -1;
-}
-```
-
-返回类型带 `&`，`records.CurData()` 就成了「那个结点里的数据域本身」，可以直接赋值：
-
-```cpp
-records.CurData().SetReturned(y, m, d);   // 直接改链表里的对象
-```
-
-如果去掉 `&` 改成 `T CurData()`，返回的是一份**拷贝**，改了也白改。
-
-同样的道理出现在 `Library.cpp:148`：
-
-```cpp
-Reader &r = readers.CurData();   // 必须用引用
-r.AppendRecord(...);             // 追加进链表里的那个 Reader
-```
-
-写成 `Reader r = readers.CurData();` 就拷贝了一个 `Reader` 出来，它的内层链表和链表里的那份毫无关系，追加的记录在函数返回时随副本一起消失——这类 bug 不会报错，只会「数据莫名不见了」。
-
-### 6. 先校验、后修改：一次借还牵动两条链表
-
-`Library.cpp:41`
-
-```cpp
-bool Library::Lend(int readerId, long long isbn, int y, int m, int d)
-{
-    Node<Book> *pb = books.Locate(isbn, true);
-    if (pb == NULL) return false;          // ① 书不存在
-    Book &b = books.CurData();
-    if (!b.Lend()) return false;           // ② 没有库存
-    Node<Reader> *pr = readers.Locate(readerId, true);
-    if (pr == NULL)                        // ③ 读者不存在
-    {
-        b.GiveBack();                      // ← 回滚刚才减掉的库存
-        return false;
-    }
-    Reader &r = readers.CurData();
-    r.AppendRecord(BorrowRecord(isbn, y, m, d, 30));
-    return true;
-}
-```
-
-借一本书要动两处：图书的 `remain--` 和读者流水表里追加一条。这两步要么都成功，要么都不发生，否则库存就悄悄少了一本。
-
-正确顺序是**把所有可能失败的条件先检查完，再动手修改**。还书 `GiveBack`（`Library.cpp:60`）把这一点做得更彻底：
-
-```cpp
-if (books.Locate(isbn, true) == NULL)   return false;
-if (readers.Locate(readerId, true) == NULL) return false;
-if (!readers.CurData().GiveBackRecord(isbn, y, m, d)) return false;
-books.CurData().GiveBack();             // 前三步都过了，才动库存
-```
-
-三行校验全部通过，才执行最后一句。这就是写出「不会留下半截状态」的代码的办法。
-
-### 7. `const` 成员函数里的 `const_cast`
-
-`Reader.cpp:11`
-
-```cpp
-int Reader::NumUnreturned() const
-{
-    LinkList<BorrowRecord> &rl = const_cast<LinkList<BorrowRecord> &>(records);
-    int n = 0;
-    for (Node<BorrowRecord> *p = rl.GoTop(); p != NULL; p = rl.Skip(1))
-        if (!rl.CurData().IsReturned())
-            n++;
-    return n;
-}
-```
-
-函数声明为 `const`，意味着它不修改 `Reader`，也意味着成员 `records` 在这里是常量。可 `LinkList` 的遍历接口 `GoTop()`、`Skip()` 都会改动「当前结点」这个内部状态，没有提供 `const` 版本，于是编译不过。
-
-`const_cast` 就是把 `records` 上的 `const` 临时去掉，让它能调用那些非 `const` 成员函数。这也是**唯一**能这么用的场合：遍历只改了「当前结点指针」，没有改链表里的任何数据，逻辑上仍然是只读的。
-
-补偿手段是接口设计——`Reader` 只对外暴露 `RecordsTop()` / `RecordsNext()` / `CurRecord()` 三个受限入口，别的代码拿不到整条内层链表。更干净的做法是让 `LinkList` 增加一组 `const` 遍历接口，但那要改老师提供的模板，与本项目「模板一行不改」的约束冲突。
-
-### 8. 显示格式与存盘格式必须分开
-
-`Reader.cpp:36` 和 `Reader.cpp:45`
-
-```cpp
-void Reader::Show(ostream &out) const          // 给人看
-{
-    out << "学号：" << setfill('0') << setw(4) << id << ...
-    records.PutList(out);
-}
-
-ostream & operator<<(ostream &out, const Reader &r)   // 给文件看
-{
-    out << r.id << '\t' << r.name << '\t' << r.phone << endl;
-    r.records.PutList(out);
-    return out;
-}
-```
-
-一个类有两个「输出」函数，输出的内容还不一样，看着像重复，其实是必须的。
-
-假如偷懒让 `operator<<` 直接调用 `Show()`，存进文件的就会是 `学号：0001` 这样的字符串；读回来时 `atoi("学号：0001")` 得 0，所有数据变成 0 或空。**存盘格式是给机器读的，必须是纯数据；显示格式是给人看的，可以随便加中文。** 两者混在一起，程序第一次存盘就会静默毁掉全部数据。
 
 ## 建议的阅读顺序
 
@@ -333,6 +97,8 @@ ostream & operator<<(ostream &out, const Reader &r)   // 给文件看
 4. `Library.h` / `.cpp`——业务层，只看 `Lend` / `GiveBack` / `OverdueList` 三个函数即可；
 5. `Main.cpp`——菜单与输入，最后看；
 6. `LinkList.h`——模板本身，可以先只看 `Node` 与 `Append` / `Locate` / `Sort` 三个函数。
+
+每个文件开头的注释先说明这个文件负责什么；读到某个函数时，函数上方的注释通常会解释它要绕开的坑。下面「这个项目用到了哪些 C++ 知识」只列清单，具体解释都在源码里，对着看即可。
 
 ## 文件说明
 
